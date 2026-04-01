@@ -369,11 +369,18 @@ textloop:
  		sta d_x
  NOT_HITLEFT:
  	lda oam + (1 * 4) + 3
- 	cmp #248 ; have we hot the right border
+ 	cmp #248 ; have we hit the right border
  	bne NOT_HITRIGHT
  		lda #$FF ; reverse direction (-1)
  		sta d_x
  NOT_HITRIGHT:
+    lda oam + (1 * 4) + 0 ; get ball's current y
+	adc #8 ; add 8 to ball's y
+	cmp oam + 0 ; compare to bat's current y (is this the correct ref?)
+	bne no_collision
+ no_collision:
+		lda #1 ; reverse direction (-1)
+		sta d_y
 
  	; ensure our changes are rendered
  	lda #1
@@ -456,4 +463,4 @@ default_palette:
 .byte $0F,$12,$22,$32 ; sp3 marine
 
 welcome_txt:
-.byte 'W','E','L','C', 'O', 'M', 'E', 0
+.byte 'M','I','C', 'K', 'I', ' ', ':', ')', 0
