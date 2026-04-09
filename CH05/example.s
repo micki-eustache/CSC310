@@ -331,6 +331,12 @@ textloop:
  		sec
  		sbc #1
  		sta oam + 3 ; change X to the left
+ 		cmp #0
+ 		beq WRAP_LEFT
+		jmp NOT_GAMEPAD_LEFT
+ WRAP_LEFT:
+    lda #255
+	sta oam + 3
  NOT_GAMEPAD_LEFT:
  	lda gamepad
  	and #PAD_R
@@ -342,6 +348,12 @@ textloop:
  		clc
  		adc #1
  		sta oam + 3 ; change X to the left
+ 		cmp #248
+ 		beq WRAP_RIGHT
+		jmp NOT_GAMEPAD_RIGHT
+ WRAP_RIGHT:
+    lda #0
+	sta oam + 3
  NOT_GAMEPAD_RIGHT:
  	; now move our ball
  	lda oam + (1 * 4) + 0 ; get the current Y
@@ -374,13 +386,25 @@ textloop:
  		lda #$FF ; reverse direction (-1)
  		sta d_x
  NOT_HITRIGHT:
-    lda oam + (1 * 4) + 0 ; get ball's current y
+	lda oam + (1 * 4) + 0 ; get ball's current y
 	adc #8 ; add 8 to ball's y
 	cmp oam + 0 ; compare to bat's current y (is this the correct ref?)
-	bne no_collision
- no_collision:
-		lda #1 ; reverse direction (-1)
+	bne NO_COLLISION
+	
+	lda oam + (1 * 4) + 3 ; get ball's current x
+	sbc oam + 3
+	bmi SUB_OTHR_WAY
+	jmp TEST_X_IN_RANGE
+ SUB_OTHR_WAY:
+	lda oam + 3 ; get ball's current x
+	sbc oam + (1 * 4) + 3
+ 	jmp TEST_X_IN_RANGE
+ TEST_X_IN_RANGE:
+	sbc #9
+	bpl NO_COLLISION
+		lda #$FF ; COLLISION DETECTED, reverse direction (-1)
 		sta d_y
+ NO_COLLISION:
 
  	; ensure our changes are rendered
  	lda #1

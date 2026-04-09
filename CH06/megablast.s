@@ -37,7 +37,9 @@ INES_SRAM   = 0 ; 1 = battery backed SRAM at $6000-7FFF
 ;*****************************************************************
 
 .segment "ZEROPAGE"
-
+time: .res 1
+lasttime: .res 1
+score: .res 4
 ;*****************************************************************
 ; Sprite OAM Data area - copied to VRAM in NMI routine
 ;*****************************************************************
@@ -133,21 +135,38 @@ wait_vblank2:
 	tya
 	pha
 
+	inc time
+
 	bit PPU_STATUS
 	; transfer sprite OAM data using DMA
 	lda #>oam
 	sta SPRITE_DMA
-
+	
 	; transfer current palette to PPU
 	vram_set_address $3F00
 	ldx #0 ; transfer the 32 bytes to VRAM
-@loop:
+	
+	@loop:
 	lda palette, x
 	sta PPU_VRAM_IO
 	inx
 	cpx #32
 	bcc @loop
-
+	
+	lda score
+	cmp #0
+	beq no_score_draw
+	lda PPU_STATUS
+	lda #$23
+	sta PPU_VRAM_ADDRESS2
+	lda #$60
+	clc
+	adc score
+	sta PPU_VRAM_ADDRESS2
+	lda #$58 ; load the X tile
+	sta PPU_VRAM_IO
+	no_score_draw:
+	
 	; write current scroll and control settings
 	lda #0
 	sta PPU_VRAM_ADDRESS1
@@ -215,7 +234,54 @@ titleloop:
 	; draw the game screen
 	jsr display_game_screen
 
+	; draw the ship
+	lda #120 ; set y pos
+	sta oam
+	ldx #$10 ; set index num of sprite
+	stx oam+1
+	lda #%00000000 ; set attribute
+	sta oam+2
+	ldx #0 ; set x position
+	stx oam+3
+	
+	jsr ppu_update
+
  mainloop:
+	lda time
+
+	cmp lasttime
+	beq mainloop
+
+	sta lasttime
+	
+	lda oam + 3 ; get current X
+	clc
+	adc #1
+	sta oam + 3 ; change X to the left
+	cmp #248
+	beq WRAP_RIGHT
+	jmp NO_WRAP
+ WRAP_RIGHT:
+    lda #0
+	sta oam + 3
+ NO_WRAP:
+	jsr gamepad_poll
+	lda gamepad
+ 	and #PAD_A
+	bne A_PUSHED
+	jmp mainloop
+ A_PUSHED:
+	lda oam + 3
+	cmp #230
+	bcs SCORED
+	jmp mainloop
+ SCORED:
+	ldy score
+	iny
+	sty score
+	lda #0
+	sta oam + 3
+	
  	jmp mainloop
 .endproc
 
@@ -230,7 +296,7 @@ paddr: .res 2 ; 16-bit address pointer
  .segment "CODE"
 
 title_text:
-.byte "M E G A  B L A S T",0
+.byte "L I N E   C R O S S",0
 
 press_play_text:
 .byte "PRESS FIRE TO BEGIN",0
@@ -279,8 +345,6 @@ loop:
 game_screen_mountain:
 .byte 001,002,003,004,001,002,003,004,001,002,003,004,001,002,003,004
 .byte 001,002,003,004,001,002,003,004,001,002,003,004,001,002,003,004
-game_screen_scoreline:
-.byte "SCORE 0000000"
 
 .segment "CODE"
 .proc display_game_screen
@@ -288,16 +352,23 @@ game_screen_scoreline:
 
 	jsr clear_nametable ; Clear the 1st name table
 
-	; output mountain line
-	vram_set_address (NAME_TABLE_0_ADDRESS + 22 * 32)
-	assign_16i paddr, game_screen_mountain
+	vram_set_address (NAME_TABLE_0_ADDRESS + 30)
+	lda ppu_ctl0
+	pha
+	ora #VRAM_DOWN
+	sta ppu_ctl0
+	sta PPU_CONTROL
 	ldy #0
+	lda #092 ; tile number to repeat
 loop:
-	lda (paddr),y
 	sta PPU_VRAM_IO
-	iny
-	cpy #32
+	iny ;increment y
+	cpy #26 ;check if we've reached 26 and if so exit loop
 	bne loop
+
+	pla
+	sta ppu_ctl0
+	sta PPU_CONTROL
 
 	; draw a base line
 	vram_set_address (NAME_TABLE_0_ADDRESS + 26 * 32)
@@ -309,15 +380,7 @@ loop2:
 	cpy #32
 	bne loop2
 
-	; output the score section on the next line
-	assign_16i paddr, game_screen_scoreline
-	ldy #0
-loop3:
-	lda (paddr),y
-	sta PPU_VRAM_IO
-	iny
-	cpy #12
-	bne loop3
+	; displays score
 
 	jsr ppu_update ; Wait until the screen has been drawn
 	rts
